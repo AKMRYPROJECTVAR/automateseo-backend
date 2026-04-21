@@ -163,6 +163,22 @@ app.post('/api/trigger-articles', async (req, res) => {
   generateDailyArticles().catch(console.error);
 });
 
+
+// ── Trigger article for one specific client ──────────────────────────────────
+app.post('/api/trigger-one', async (req, res) => {
+  if (req.headers['x-admin-key'] !== process.env.ADMIN_KEY) return res.status(401).json({ error: 'Unauthorized' });
+  const { clientId } = req.body;
+  if (!clientId) return res.status(400).json({ error: 'clientId required' });
+  try {
+    const { supabase } = require('./supabase');
+    const { data: client, error } = await supabase.from('clients').select('*').eq('id', clientId).single();
+    if (error || !client) return res.status(404).json({ error: 'Client not found' });
+    res.json({ message: 'Article generation started for ' + client.email });
+    const { generateArticleForClient } = require('./articleGenerator');
+    generateArticleForClient(client).catch(console.error);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ── Daily cron 9am AEST (11pm UTC) ──────────────────────────────────────────
 cron.schedule('0 23 * * *', () => {
   console.log('Running daily article generation...');
