@@ -110,7 +110,7 @@ I could not scrape the site. Based on the domain name and URL, make your best gu
 Return ONLY valid JSON, no markdown.`;
 
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514', max_tokens: 1000,
+      model: 'claude-sonnet-4-5', max_tokens: 1000,
       messages: [{ role: 'user', content: prompt }]
     });
     const text = response.content[0].text.replace(/```json|```/g, '').trim();
