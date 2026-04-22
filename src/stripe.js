@@ -9,6 +9,7 @@ async function createCheckoutSession(email, websiteUrl) {
     payment_method_types: ['card'],
     line_items: [{ price: process.env.STRIPE_PRICE_ID, quantity: 1 }],
     mode: 'subscription',
+    subscription_data: { trial_period_days: 3 },
     success_url: process.env.SITE_URL + '/success.html?session_id={CHECKOUT_SESSION_ID}',
     cancel_url: process.env.SITE_URL + '/signup.html',
     customer_email: undefined,
