@@ -7,54 +7,90 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 // ── WordPress Publisher ────────────────────────────────────────────────────
 async function publishToWordPress(client, title, content, excerpt) {
   const { wordpress_url, wordpress_username, wordpress_app_password } = client;
-  if (!wordpress_url || !wordpress_username || !wordpress_app_password) return { success: false, reason: 'no_wp_credentials' };
+  if (!wordpress_url || !wordpress_username || !wordpress_app_password) {
+    return { success: false, reason: 'no_wp_credentials' };
+  }
 
-  const baseUrl = wordpress_url.replace(/\/$/, '');
-  const credentials = Buffer.from(wordpress_username + ':' + wordpress_app_password).toString('base64');
-  const body = JSON.stringify({
-    title,
-    content,
+  // Normalize: ensure URL has protocol, strip trailing slash
+  let baseUrl = wordpress_url.trim();
+  if (!baseUrl.startsWith('http')) baseUrl = 'https://' + baseUrl;
+  baseUrl = baseUrl.replace(/\/$/, '');
+
+  // Normalize app password: WordPress app passwords work with or without spaces
+  const appPass = wordpress_app_password.trim();
+  const credentials = Buffer.from(wordpress_username.trim() + ':' + appPass).toString('base64');
+
+  const postBody = JSON.stringify({
+    title: title,
+    content: content,
     excerpt: excerpt || '',
     status: 'publish',
-    categories: [],
     format: 'standard'
   });
 
+  const endpoint = baseUrl + '/wp-json/wp/v2/posts';
+  console.log('WP publish attempt:', endpoint, 'user:', wordpress_username.trim());
+
   return new Promise((resolve) => {
-    const url = new URL(baseUrl + '/wp-json/wp/v2/posts');
-    const options = {
-      hostname: url.hostname,
-      port: url.port || (url.protocol === 'https:' ? 443 : 80),
-      path: url.pathname,
-      method: 'POST',
-      headers: {
-        'Authorization': 'Basic ' + credentials,
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(body)
-      },
-      timeout: 15000
-    };
-    const proto = url.protocol === 'https:' ? https : http;
-    const req = proto.request(options, (res) => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => {
-        try {
-          const parsed = JSON.parse(data);
-          if (res.statusCode === 201) {
-            resolve({ success: true, url: parsed.link, post_id: parsed.id, platform: 'wordpress' });
-          } else {
-            resolve({ success: false, reason: parsed.message || 'wp_error', status: res.statusCode });
-          }
-        } catch(e) {
-          resolve({ success: false, reason: 'parse_error' });
+    const makeRequest = (url, redirectCount) => {
+      if (redirectCount > 3) { resolve({ success: false, reason: 'too_many_redirects' }); return; }
+      const parsedUrl = new URL(url);
+      const proto = parsedUrl.protocol === 'https:' ? https : http;
+      const options = {
+        hostname: parsedUrl.hostname,
+        port: parsedUrl.port || (parsedUrl.protocol === 'https:' ? 443 : 80),
+        path: parsedUrl.pathname + (parsedUrl.search || ''),
+        method: 'POST',
+        headers: {
+          'Authorization': 'Basic ' + credentials,
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(postBody),
+          'User-Agent': 'AutomateSEO/1.0'
+        },
+        timeout: 20000
+      };
+      const req = proto.request(options, (res) => {
+        // Follow redirects
+        if ((res.statusCode === 301 || res.statusCode === 302 || res.statusCode === 307) && res.headers.location) {
+          const redirectUrl = res.headers.location.startsWith('http')
+            ? res.headers.location
+            : parsedUrl.origin + res.headers.location;
+          console.log('WP redirect:', res.statusCode, '->', redirectUrl);
+          res.resume();
+          makeRequest(redirectUrl, redirectCount + 1);
+          return;
         }
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          console.log('WP response status:', res.statusCode, 'body preview:', data.substring(0, 200));
+          try {
+            const parsed = JSON.parse(data);
+            if (res.statusCode === 201) {
+              resolve({ success: true, url: parsed.link, post_id: parsed.id, platform: 'wordpress' });
+            } else {
+              const reason = parsed.message || parsed.code || ('status_' + res.statusCode);
+              console.error('WP publish failed:', reason, 'code:', parsed.code);
+              resolve({ success: false, reason: reason, status: res.statusCode });
+            }
+          } catch(e) {
+            console.error('WP parse error:', e.message, 'raw:', data.substring(0, 300));
+            resolve({ success: false, reason: 'parse_error: ' + data.substring(0, 100) });
+          }
+        });
       });
-    });
-    req.on('error', (e) => resolve({ success: false, reason: e.message }));
-    req.on('timeout', () => { req.destroy(); resolve({ success: false, reason: 'timeout' }); });
-    req.write(body);
-    req.end();
+      req.on('error', (e) => {
+        console.error('WP request error:', e.message);
+        resolve({ success: false, reason: 'request_error: ' + e.message });
+      });
+      req.on('timeout', () => {
+        req.destroy();
+        resolve({ success: false, reason: 'timeout' });
+      });
+      req.write(postBody);
+      req.end();
+    };
+    makeRequest(endpoint, 0);
   });
 }
 
