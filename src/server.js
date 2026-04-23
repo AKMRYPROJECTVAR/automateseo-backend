@@ -179,6 +179,58 @@ app.post('/api/trigger-one', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+
+// ── Test WordPress credentials ────────────────────────────────────────────────
+app.post('/api/test-wp', async (req, res) => {
+  const { wordpress_url, wordpress_username, wordpress_app_password } = req.body;
+  if (!wordpress_url || !wordpress_username || !wordpress_app_password) {
+    return res.status(400).json({ error: 'wordpress_url, wordpress_username, wordpress_app_password required' });
+  }
+  const https = require('https');
+  const http = require('http');
+  let baseUrl = wordpress_url.trim();
+  if (!baseUrl.startsWith('http')) baseUrl = 'https://' + baseUrl;
+  baseUrl = baseUrl.replace(/\/$/, '');
+  const credentials = Buffer.from(wordpress_username.trim() + ':' + wordpress_app_password.trim()).toString('base64');
+
+  // First check if WP REST API is reachable
+  const checkUrl = baseUrl + '/wp-json/wp/v2/users/me';
+  const parsedUrl = new URL(checkUrl);
+  const proto = parsedUrl.protocol === 'https:' ? https : http;
+
+  const result = await new Promise((resolve) => {
+    const options = {
+      hostname: parsedUrl.hostname,
+      port: parsedUrl.port || (parsedUrl.protocol === 'https:' ? 443 : 80),
+      path: parsedUrl.pathname,
+      method: 'GET',
+      headers: { 'Authorization': 'Basic ' + credentials, 'User-Agent': 'AutomateSEO/1.0' },
+      timeout: 10000
+    };
+    const req = proto.request(options, (response) => {
+      let data = '';
+      response.on('data', chunk => data += chunk);
+      response.on('end', () => {
+        try {
+          const parsed = JSON.parse(data);
+          if (response.statusCode === 200) {
+            resolve({ success: true, user: parsed.name, roles: parsed.roles, capabilities: Object.keys(parsed.capabilities || {}).slice(0, 5) });
+          } else {
+            resolve({ success: false, status: response.statusCode, error: parsed.message || parsed.code || 'auth_failed' });
+          }
+        } catch(e) {
+          resolve({ success: false, error: 'parse_error', raw: data.substring(0, 200) });
+        }
+      });
+    });
+    req.on('error', e => resolve({ success: false, error: e.message }));
+    req.on('timeout', () => { req.destroy(); resolve({ success: false, error: 'timeout' }); });
+    req.end();
+  });
+
+  res.json(result);
+});
+
 // ── Daily cron 9am AEST (11pm UTC) ──────────────────────────────────────────
 cron.schedule('0 23 * * *', () => {
   console.log('Running daily article generation...');
