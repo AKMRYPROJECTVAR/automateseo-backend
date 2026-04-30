@@ -7,6 +7,10 @@ const http = require('http');
 const { handleStripeWebhook, createCheckoutSession } = require('./stripe');
 const { generateDailyArticles } = require('./articleGenerator');
 
+
+// In-memory cache for website analysis (24hr TTL)
+const analysisCache = new Map();
+const CACHE_TTL = 24 * 60 * 60 * 1000;
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -64,6 +68,13 @@ app.post('/api/create-checkout', async (req, res) => {
 app.post('/api/analyse-website', async (req, res) => {
   try {
     const { websiteUrl } = req.body;
+    
+    // Return cached result if fresh
+    const cached = analysisCache.get(websiteUrl);
+    if (cached && Date.now() - cached.ts < CACHE_TTL) {
+      console.log('Cache hit for', websiteUrl);
+      return res.json(cached.data);
+    }
     if (!websiteUrl) return res.status(400).json({ error: 'websiteUrl required' });
     let scrapedText = '';
     try {
@@ -76,11 +87,13 @@ app.post('/api/analyse-website', async (req, res) => {
       ? 'Analyse this business website: ' + websiteUrl + '\n\nScraped content:\n---\n' + scrapedText + '\n---\n\nReturn ONLY a JSON object with: description (2-3 sentence description from real content), services (array of 5 specific services they actually offer), exclusions (array of 2-3 things they do NOT offer), competitors (array of 3 objects with {domain, desc}). No markdown.'
       : 'Analyse this business website: ' + websiteUrl + '. Return ONLY JSON with: description, services (5 items), exclusions (3 items), competitors (3 objects with domain and desc). No markdown.';
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-5', max_tokens: 1000,
+      model: 'claude-haiku-4-5-20251001', max_tokens: 1000,
       messages: [{ role: 'user', content: prompt }]
     });
     const text = response.content[0].text.replace(/```json|```/g, '').trim();
-    res.json(JSON.parse(text));
+    const result = JSON.parse(text);
+      analysisCache.set(websiteUrl, { data: result, ts: Date.now() });
+      res.json(result);
   } catch (err) { console.error('Analyse error:', err.message); res.status(500).json({ error: err.message }); }
 });
 
