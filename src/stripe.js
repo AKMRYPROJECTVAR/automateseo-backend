@@ -52,17 +52,16 @@ async function handleStripeWebhook(req, res) {
           trial_ends_at: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString()
         }).eq('email', email);
       } else {
-        // Create new client record
-        await supabase.from('clients').insert({
-          email,
-          website_url: websiteUrl || '',
-          stripe_customer_id: customerId,
-          stripe_subscription_id: subscriptionId,
-          status: 'active',
-          trial_ends_at: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString()
-        });
-      }
-      console.log('Client activated:', email);
+            // Upsert: insert if no row exists, or update stripe/status only — never touch CMS credentials
+            await supabase.from('clients').upsert({
+              email,
+              website_url: websiteUrl || '',
+              stripe_customer_id: customerId,
+              stripe_subscription_id: subscriptionId,
+              status: 'active',
+              trial_ends_at: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString()
+            }, { onConflict: 'email', ignoreDuplicates: false });
+            console.log('Client activated:', email);
     }
   }
 
