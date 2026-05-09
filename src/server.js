@@ -18,11 +18,19 @@ app.use(cors({
   origin: true,
   credentials: true,
   methods: ['GET','POST','PUT','DELETE','OPTIONS'],
-  allowedHeaders: ['Content-Type','Authorization']
+  allowedHeaders: ['Content-Type','Authorization','x-admin-key']
 }));
 app.options('*', cors());
 
 app.get('/', (req, res) => res.json({ status: 'AutomateSEO backend running', time: new Date().toISOString() }));
+
+function requireAdmin(req, res) {
+  if (req.headers['x-admin-key'] !== process.env.ADMIN_KEY) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return false;
+  }
+  return true;
+}
 
 // Scrape website
 function scrapeWebsite(url) {
@@ -159,6 +167,55 @@ app.get('/api/dashboard/:email', async (req, res) => {
     if (clientErr || !client) return res.status(404).json({ error: 'Client not found' });
     const { data: articles } = await supabase.from('articles').select('id, title, keyword, status, word_count, published_at, published_url, created_at').eq('client_id', client.id).order('created_at', { ascending: false }).limit(50);
     res.json({ client: { id: client.id, email: client.email, website_url: client.website_url, brand_name: client.brand_name, status: client.status, cms_type: client.cms_type || 'none', created_at: client.created_at }, articles: articles || [] });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/dashboard/:email/articles/:articleId', async (req, res) => {
+  try {
+    const { supabase } = require('./supabase');
+    const email = decodeURIComponent(req.params.email);
+    const articleId = req.params.articleId;
+    const { data: client, error: clientErr } = await supabase.from('clients').select('id, email').eq('email', email).single();
+    if (clientErr || !client) return res.status(404).json({ error: 'Client not found' });
+    const { data: article, error: articleErr } = await supabase.from('articles').select('*').eq('id', articleId).eq('client_id', client.id).single();
+    if (articleErr || !article) return res.status(404).json({ error: 'Article not found' });
+    res.json({ article });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/admin/overview', async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  try {
+    const { supabase } = require('./supabase');
+    const { data: clients, error: clientErr } = await supabase.from('clients').select('*').order('created_at', { ascending: false });
+    if (clientErr) throw clientErr;
+    const { data: articles, error: articleErr } = await supabase.from('articles').select('id, client_id, title, keyword, status, word_count, published_at, published_url, created_at').order('created_at', { ascending: false }).limit(200);
+    if (articleErr) throw articleErr;
+    res.json({ clients: clients || [], articles: articles || [] });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/admin/clients', async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  try {
+    const { supabase } = require('./supabase');
+    const { email, website_url } = req.body;
+    if (!email || !website_url) return res.status(400).json({ error: 'email and website_url required' });
+    const { error } = await supabase.from('clients').insert({ email, website_url, status: 'active', cms_type: 'none' });
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.patch('/api/admin/clients/:email/status', async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  try {
+    const { supabase } = require('./supabase');
+    const email = decodeURIComponent(req.params.email);
+    const status = req.body.status || 'active';
+    const { error } = await supabase.from('clients').update({ status }).eq('email', email);
+    if (error) throw error;
+    res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
