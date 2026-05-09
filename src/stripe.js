@@ -1,8 +1,17 @@
 require('dotenv').config();
 const Stripe = require('stripe');
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
+let stripe;
+function getStripe() {
+  if (!process.env.STRIPE_SECRET_KEY) {
+    throw new Error('STRIPE_SECRET_KEY is not configured');
+  }
+  if (!stripe) stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+  return stripe;
+}
 
 async function createCheckoutSession(email, websiteUrl) {
+  const stripe = getStripe();
   const customer = await stripe.customers.create({ email, metadata: { website_url: websiteUrl } });
   const session = await stripe.checkout.sessions.create({
     customer: customer.id,
@@ -19,6 +28,7 @@ async function createCheckoutSession(email, websiteUrl) {
 }
 
 async function handleStripeWebhook(req, res) {
+  const stripe = getStripe();
   const sig = req.headers['stripe-signature'];
   let event;
   try {

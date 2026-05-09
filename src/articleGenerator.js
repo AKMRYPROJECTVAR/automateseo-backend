@@ -2,7 +2,14 @@ const Anthropic = require('@anthropic-ai/sdk');
 const https = require('https');
 const http = require('http');
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+let anthropic;
+function getAnthropic() {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    throw new Error('ANTHROPIC_API_KEY is not configured');
+  }
+  if (!anthropic) anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  return anthropic;
+}
 
 // ── WordPress Publisher ────────────────────────────────────────────────────
 async function publishToWordPress(client, title, content, excerpt) {
@@ -174,6 +181,7 @@ async function publishToShopify(client, title, content, excerpt) {
 // ── Article Generator ──────────────────────────────────────────────────────
 async function generateArticleForClient(client) {
   const { supabase } = require('./supabase');
+  const anthropic = getAnthropic();
 
   try {
     const businessDesc = client.business_description || client.website_url;
