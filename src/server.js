@@ -16,7 +16,13 @@ const PORT = process.env.PORT || 3000;
 
 app.use('/webhook/stripe', express.raw({ type: 'application/json' }));
 app.use(express.json());
-app.use(cors());
+app.use(cors({
+  origin: true,
+  credentials: true,
+  methods: ['GET','POST','PUT','DELETE','OPTIONS'],
+  allowedHeaders: ['Content-Type','Authorization']
+}));
+app.options('*', cors());
 
 app.get('/', (req, res) => res.json({ status: 'AutomateSEO backend running', time: new Date().toISOString() }));
 
