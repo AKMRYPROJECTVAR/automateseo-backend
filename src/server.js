@@ -32,6 +32,10 @@ function requireAdmin(req, res) {
   return true;
 }
 
+function adminSourceError(source, err) {
+  return { source, message: source + ' query failed', code: err && err.code };
+}
+
 function supabaseRest(table, query) {
   return new Promise((resolve, reject) => {
     const base = (process.env.SUPABASE_URL || '').replace(/\/$/, '');
@@ -222,13 +226,13 @@ app.get('/api/admin/overview', async (req, res) => {
     try {
       clients = await supabaseRest('clients', 'select=id,email,website_url,brand_name,status,cms_type,target_cities,stripe_customer_id,created_at&limit=100');
     } catch (err) {
-      errors.push({ source: 'clients', message: err.message || String(err), cause: err.cause && (err.cause.message || String(err.cause)) });
+      errors.push(adminSourceError('clients', err));
     }
 
     try {
       articles = await supabaseRest('articles', 'select=id,client_id,title,keyword,status,word_count,published_at,published_url,created_at&limit=100');
     } catch (err) {
-      errors.push({ source: 'articles', message: err.message || String(err), cause: err.cause && (err.cause.message || String(err.cause)) });
+      errors.push(adminSourceError('articles', err));
     }
 
     res.json({ clients, articles, errors });
