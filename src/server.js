@@ -187,7 +187,7 @@ app.get('/api/admin/overview', async (req, res) => {
   if (!requireAdmin(req, res)) return;
   try {
     const { supabase } = require('./supabase');
-    const { data: clients, error: clientErr } = await supabase.from('clients').select('*').order('created_at', { ascending: false });
+    const { data: clients, error: clientErr } = await supabase.from('clients').select('id, email, website_url, brand_name, status, cms_type, target_cities, stripe_customer_id, created_at').order('created_at', { ascending: false }).limit(500);
     if (clientErr) throw clientErr;
     const { data: articles, error: articleErr } = await supabase.from('articles').select('id, client_id, title, keyword, status, word_count, published_at, published_url, created_at').order('created_at', { ascending: false }).limit(200);
     if (articleErr) throw articleErr;
