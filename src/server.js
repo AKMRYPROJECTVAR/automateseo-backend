@@ -187,11 +187,27 @@ app.get('/api/admin/overview', async (req, res) => {
   if (!requireAdmin(req, res)) return;
   try {
     const { supabase } = require('./supabase');
-    const { data: clients, error: clientErr } = await supabase.from('clients').select('id, email, website_url, brand_name, status, cms_type, target_cities, stripe_customer_id, created_at').order('created_at', { ascending: false }).limit(500);
-    if (clientErr) throw clientErr;
-    const { data: articles, error: articleErr } = await supabase.from('articles').select('id, client_id, title, keyword, status, word_count, published_at, published_url, created_at').order('created_at', { ascending: false }).limit(200);
-    if (articleErr) throw articleErr;
-    res.json({ clients: clients || [], articles: articles || [] });
+    const errors = [];
+    let clients = [];
+    let articles = [];
+
+    try {
+      const result = await supabase.from('clients').select('id, email, website_url, brand_name, status, cms_type, target_cities, stripe_customer_id, created_at').order('created_at', { ascending: false }).limit(100);
+      if (result.error) errors.push({ source: 'clients', message: result.error.message });
+      else clients = result.data || [];
+    } catch (err) {
+      errors.push({ source: 'clients', message: err.message || String(err), cause: err.cause && (err.cause.message || String(err.cause)) });
+    }
+
+    try {
+      const result = await supabase.from('articles').select('id, client_id, title, keyword, status, word_count, published_at, published_url, created_at').order('created_at', { ascending: false }).limit(100);
+      if (result.error) errors.push({ source: 'articles', message: result.error.message });
+      else articles = result.data || [];
+    } catch (err) {
+      errors.push({ source: 'articles', message: err.message || String(err), cause: err.cause && (err.cause.message || String(err.cause)) });
+    }
+
+    res.json({ clients, articles, errors });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
