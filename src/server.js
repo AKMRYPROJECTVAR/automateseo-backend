@@ -192,7 +192,7 @@ app.get('/api/admin/overview', async (req, res) => {
     let articles = [];
 
     try {
-      const result = await supabase.from('clients').select('id, email, website_url, brand_name, status, cms_type, target_cities, stripe_customer_id, created_at').order('created_at', { ascending: false }).limit(100);
+      const result = await supabase.from('clients').select('id, email, website_url, brand_name, status, cms_type, target_cities, stripe_customer_id, created_at').limit(100);
       if (result.error) errors.push({ source: 'clients', message: result.error.message });
       else clients = result.data || [];
     } catch (err) {
@@ -200,7 +200,7 @@ app.get('/api/admin/overview', async (req, res) => {
     }
 
     try {
-      const result = await supabase.from('articles').select('id, client_id, title, keyword, status, word_count, published_at, published_url, created_at').order('created_at', { ascending: false }).limit(100);
+      const result = await supabase.from('articles').select('id, client_id, title, keyword, status, word_count, published_at, published_url, created_at').limit(100);
       if (result.error) errors.push({ source: 'articles', message: result.error.message });
       else articles = result.data || [];
     } catch (err) {
