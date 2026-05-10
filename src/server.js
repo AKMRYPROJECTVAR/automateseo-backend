@@ -32,6 +32,35 @@ function requireAdmin(req, res) {
   return true;
 }
 
+function supabaseRest(table, query) {
+  return new Promise((resolve, reject) => {
+    const base = (process.env.SUPABASE_URL || '').replace(/\/$/, '');
+    if (!base || !process.env.SUPABASE_SERVICE_KEY) return reject(new Error('Supabase env vars missing'));
+    const url = new URL(base + '/rest/v1/' + table + '?' + query);
+    const req = https.request(url, {
+      method: 'GET',
+      headers: {
+        apikey: process.env.SUPABASE_SERVICE_KEY,
+        Authorization: 'Bearer ' + process.env.SUPABASE_SERVICE_KEY,
+        Accept: 'application/json'
+      },
+      timeout: 10000
+    }, (resp) => {
+      let body = '';
+      resp.on('data', chunk => { body += chunk; });
+      resp.on('end', () => {
+        if (resp.statusCode < 200 || resp.statusCode >= 300) {
+          return reject(new Error('Supabase REST ' + resp.statusCode + ': ' + body.slice(0, 300)));
+        }
+        try { resolve(JSON.parse(body)); } catch (err) { reject(new Error('Invalid Supabase JSON')); }
+      });
+    });
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(new Error('Supabase REST timeout')); });
+    req.end();
+  });
+}
+
 // Scrape website
 function scrapeWebsite(url) {
   return new Promise((resolve) => {
@@ -186,23 +215,18 @@ app.get('/api/dashboard/:email/articles/:articleId', async (req, res) => {
 app.get('/api/admin/overview', async (req, res) => {
   if (!requireAdmin(req, res)) return;
   try {
-    const { supabase } = require('./supabase');
     const errors = [];
     let clients = [];
     let articles = [];
 
     try {
-      const result = await supabase.from('clients').select('id, email, website_url, brand_name, status, cms_type, target_cities, stripe_customer_id, created_at').limit(100);
-      if (result.error) errors.push({ source: 'clients', message: result.error.message });
-      else clients = result.data || [];
+      clients = await supabaseRest('clients', 'select=id,email,website_url,brand_name,status,cms_type,target_cities,stripe_customer_id,created_at&limit=100');
     } catch (err) {
       errors.push({ source: 'clients', message: err.message || String(err), cause: err.cause && (err.cause.message || String(err.cause)) });
     }
 
     try {
-      const result = await supabase.from('articles').select('id, client_id, title, keyword, status, word_count, published_at, published_url, created_at').limit(100);
-      if (result.error) errors.push({ source: 'articles', message: result.error.message });
-      else articles = result.data || [];
+      articles = await supabaseRest('articles', 'select=id,client_id,title,keyword,status,word_count,published_at,published_url,created_at&limit=100');
     } catch (err) {
       errors.push({ source: 'articles', message: err.message || String(err), cause: err.cause && (err.cause.message || String(err.cause)) });
     }
