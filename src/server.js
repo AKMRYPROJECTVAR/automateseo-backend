@@ -33,7 +33,11 @@ function requireAdmin(req, res) {
 }
 
 function adminSourceError(source, err) {
-  return { source, message: source + ' query failed', code: err && err.code };
+  const safe = { source, message: source + ' query failed', code: err && err.code };
+  if (err && err.details) safe.details = err.details;
+  if (err && err.hint) safe.hint = err.hint;
+  if (err && err.message && !/key|token|secret|bearer|jwt/i.test(err.message)) safe.message = err.message;
+  return safe;
 }
 
 // Scrape website
