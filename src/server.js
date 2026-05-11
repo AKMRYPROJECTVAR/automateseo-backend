@@ -40,6 +40,17 @@ function adminSourceError(source, err) {
   return safe;
 }
 
+function parseModelJson(text) {
+  const cleaned = String(text || '').replace(/```json|```/g, '').trim();
+  try { return JSON.parse(cleaned); } catch (err) {}
+  const start = cleaned.indexOf('{');
+  const end = cleaned.lastIndexOf('}');
+  if (start !== -1 && end > start) {
+    return JSON.parse(cleaned.slice(start, end + 1));
+  }
+  throw new Error('Could not parse analysis JSON');
+}
+
 // Scrape website
 function scrapeWebsite(url) {
   return new Promise((resolve) => {
@@ -114,8 +125,7 @@ app.post('/api/analyse-website', async (req, res) => {
       model: process.env.ANTHROPIC_ANALYSE_MODEL || 'claude-3-5-haiku-20241022', max_tokens: 1000,
       messages: [{ role: 'user', content: prompt }]
     });
-    const text = response.content[0].text.replace(/```json|```/g, '').trim();
-    const result = JSON.parse(text);
+    const result = parseModelJson(response.content[0].text);
       analysisCache.set(websiteUrl, { data: result, ts: Date.now() });
       res.json(result);
   } catch (err) { console.error('Analyse error:', err.message); res.status(500).json({ error: err.message }); }
