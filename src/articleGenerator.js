@@ -201,7 +201,7 @@ async function generateArticleForClient(client) {
 
     // Generate keyword + article
     const keywordResponse = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-sonnet-4-5-20251001',
       max_tokens: 200,
       messages: [{
         role: 'user',
@@ -212,7 +212,7 @@ async function generateArticleForClient(client) {
 
     // Generate full article
     const articleResponse = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-sonnet-4-5-20251001',
       max_tokens: 2500,
       messages: [{
         role: 'user',
@@ -223,7 +223,7 @@ async function generateArticleForClient(client) {
 
     // Generate title and excerpt
     const metaResponse = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-sonnet-4-5-20251001',
       max_tokens: 200,
       messages: [{
         role: 'user',
