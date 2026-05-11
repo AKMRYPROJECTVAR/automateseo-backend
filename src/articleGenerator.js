@@ -201,7 +201,7 @@ async function generateArticleForClient(client) {
 
     // Generate keyword, article, title, and excerpt in one pass to reduce latency.
     const generationResponse = await anthropic.messages.create({
-      model: 'claude-sonnet-4-5-20251001',
+      model: 'claude-sonnet-4-6',
       max_tokens: 3200,
       messages: [{
         role: 'user',
