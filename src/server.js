@@ -274,8 +274,13 @@ app.get('/api/articles/:clientId', async (req, res) => {
 // ── Manual trigger ───────────────────────────────────────────────────────────
 app.post('/api/trigger-articles', async (req, res) => {
   if (req.headers['x-admin-key'] !== process.env.ADMIN_KEY) return res.status(401).json({ error: 'Unauthorized' });
-  res.json({ message: 'Article generation started' });
-  generateDailyArticles().catch(console.error);
+  try {
+    const results = await generateDailyArticles();
+    res.json({ message: 'Article generation complete', results });
+  } catch (err) {
+    console.error('Manual article generation failed:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 
@@ -288,10 +293,13 @@ app.post('/api/trigger-one', async (req, res) => {
     const { supabase } = require('./supabase');
     const { data: client, error } = await supabase.from('clients').select('*').eq('id', clientId).single();
     if (error || !client) return res.status(404).json({ error: 'Client not found' });
-    res.json({ message: 'Article generation started for ' + client.email });
     const { generateArticleForClient } = require('./articleGenerator');
-    generateArticleForClient(client).catch(console.error);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+    const result = await generateArticleForClient(client);
+    if (!result.success) return res.status(500).json({ error: result.error || result.message || 'Article generation failed' });
+    res.json({ message: 'Article generation complete for ' + client.email, result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 

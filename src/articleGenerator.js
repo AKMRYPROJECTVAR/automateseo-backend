@@ -199,40 +199,49 @@ async function generateArticleForClient(client) {
 
     const recentTitles = recentArticles ? recentArticles.map(a => a.title).join(', ') : 'none';
 
-    // Generate keyword + article
-    const keywordResponse = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 200,
+    // Generate keyword, article, title, and excerpt in one pass to reduce latency.
+    const generationResponse = await anthropic.messages.create({
+      model: 'claude-sonnet-4-5-20251001',
+      max_tokens: 3200,
       messages: [{
         role: 'user',
-        content: 'Business: ' + businessDesc + '. Location: ' + location + '. Focus service: ' + priorityService + '. Recent articles: ' + recentTitles + '. Give me ONE high-value SEO keyword phrase (3-6 words) someone would search to find this business. Reply with ONLY the keyword phrase, nothing else.'
+        content: [
+          'Generate one SEO article package for this business.',
+          '',
+          'Business: ' + businessDesc,
+          'Location: ' + location,
+          'Focus service: ' + priorityService,
+          'Recent articles: ' + recentTitles,
+          '',
+          'Requirements:',
+          '- Return valid JSON only',
+          '- Choose ONE high-value SEO keyword phrase (3-6 words)',
+          '- Write an expert SEO blog article of about 1500 words',
+          '- Use HTML headings (h2, h3), paragraphs, and bullet lists',
+          '- Include a clear introduction and conclusion',
+          '- Naturally use the keyword 4-6 times',
+          '- Do NOT include generic AI filler',
+          '- Do NOT mention the business name more than 3 times',
+          '- Make the title SEO-optimised and 60 chars max',
+          '- Make the excerpt/meta description 155 chars max',
+          '',
+          'Return JSON in exactly this shape:',
+          '{"keyword":"...","title":"...","excerpt":"...","article":"<h2>...</h2>"}'
+        ].join('\n')
       }]
     });
-    const keyword = keywordResponse.content[0].text.trim();
 
-    // Generate full article
-    const articleResponse = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 2500,
-      messages: [{
-        role: 'user',
-        content: 'Write a 1500-word expert SEO blog article for this business:\n\nBusiness: ' + businessDesc + '\nLocation: ' + location + '\nTarget keyword: ' + keyword + '\nService focus: ' + priorityService + '\n\nRequirements:\n- Professional, helpful tone\n- Naturally use the keyword 4-6 times\n- Use HTML headings (h2, h3), paragraphs, and bullet lists\n- Include a clear introduction and conclusion\n- Do NOT include generic AI filler\n- Do NOT mention the business name more than 3 times\n- Write as if a human expert wrote it\n\nReturn ONLY the article HTML content starting with an h2 tag. No title tag needed.'
-      }]
-    });
-    const articleContent = articleResponse.content[0].text.trim();
+    const generationRaw = generationResponse.content[0].text.replace(/```json|```/g, '').trim();
+    const generationMatch = generationRaw.match(/\{[\s\S]*\}/);
+    const generation = generationMatch ? JSON.parse(generationMatch[0]) : {};
+    const keyword = String(generation.keyword || '').trim();
+    const title = String(generation.title || '').trim();
+    const excerpt = String(generation.excerpt || '').trim();
+    const articleContent = String(generation.article || '').trim();
 
-    // Generate title and excerpt
-    const metaResponse = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 200,
-      messages: [{
-        role: 'user',
-        content: 'Based on this article content, write:\n1. An SEO-optimised title (60 chars max)\n2. A meta description/excerpt (155 chars max)\n\nArticle keyword: ' + keyword + '\nBusiness location: ' + location + '\n\nReturn ONLY JSON: {"title": "...", "excerpt": "..."}'
-      }]
-    });
-    const meta = JSON.parse(metaResponse.content[0].text.replace(/```json|```/g, '').trim());
-    const title = meta.title;
-    const excerpt = meta.excerpt;
+    if (!keyword || !title || !excerpt || !articleContent) {
+      throw new Error('Incomplete article generation response');
+    }
 
     // Save to Supabase first
     const { data: articleData, error: articleError } = await supabase
