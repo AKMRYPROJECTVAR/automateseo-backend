@@ -12,16 +12,14 @@ function getStripe() {
 
 async function createCheckoutSession(email, websiteUrl) {
   const stripe = getStripe();
-  const customer = await stripe.customers.create({ email, metadata: { website_url: websiteUrl } });
   const session = await stripe.checkout.sessions.create({
-    customer: customer.id,
+    customer_email: email,
     payment_method_types: ['card'],
     line_items: [{ price: process.env.STRIPE_PRICE_ID, quantity: 1 }],
     mode: 'subscription',
     subscription_data: { trial_period_days: 3 },
     success_url: process.env.SITE_URL + '/success.html?email=' + encodeURIComponent(email) + '&session_id={CHECKOUT_SESSION_ID}',
     cancel_url: process.env.SITE_URL + '/signup.html',
-    customer_email: undefined,
     metadata: { website_url: websiteUrl, email }
   });
   return session;
