@@ -12,6 +12,10 @@ const CACHE_TTL = 24 * 60 * 60 * 1000;
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+function normalizeEmail(email) {
+  return String(email || '').trim().toLowerCase();
+}
+
 app.use('/webhook/stripe', express.raw({ type: 'application/json' }));
 app.use(express.json());
 app.use(cors({
@@ -89,7 +93,8 @@ function scrapeWebsite(url) {
 app.post('/api/create-checkout', async (req, res) => {
   try {
     const { createCheckoutSession } = require('./stripe');
-    const { websiteUrl, email } = req.body;
+    const { websiteUrl } = req.body;
+    const email = normalizeEmail(req.body.email);
     if (!websiteUrl || !email) return res.status(400).json({ error: 'websiteUrl and email required' });
     const session = await createCheckoutSession(email, websiteUrl);
     res.json({ url: session.url });
@@ -137,8 +142,9 @@ app.post('/api/onboarding', async (req, res) => {
     const { supabase } = require('./supabase');
     const data = req.body;
     if (!data.websiteUrl) return res.status(400).json({ error: 'websiteUrl required' });
+    const email = normalizeEmail(data.email) || ('pending_' + Date.now() + '@automateseo.com.au');
     await supabase.from('clients').upsert({
-      email: data.email || ('pending_' + Date.now() + '@automateseo.com.au'),
+      email,
       website_url: data.websiteUrl,
       brand_name: data.brandName || null,
       language: data.language || 'en-AU',
@@ -159,7 +165,8 @@ app.post('/api/onboarding', async (req, res) => {
 app.post('/api/connect-cms', async (req, res) => {
   try {
     const { supabase } = require('./supabase');
-    const { email, cms_type, wordpress_url, wordpress_username, wordpress_app_password, shopify_domain, shopify_access_token } = req.body;
+    const { cms_type, wordpress_url, wordpress_username, wordpress_app_password, shopify_domain, shopify_access_token } = req.body;
+    const email = normalizeEmail(req.body.email);
     if (!email) return res.status(400).json({ error: 'email required' });
     const updateData = { cms_type: cms_type || 'none' };
     if (cms_type === 'wordpress') {
@@ -170,7 +177,7 @@ app.post('/api/connect-cms', async (req, res) => {
       updateData.shopify_domain = shopify_domain;
       updateData.shopify_access_token = shopify_access_token;
     }
-    const { error } = await supabase.from('clients').update(updateData).eq('email', email);
+    const { error } = await supabase.from('clients').update(updateData).ilike('email', email);
     if (error) throw error;
     res.json({ success: true });
   } catch (err) { console.error('Connect CMS error:', err.message); res.status(500).json({ error: err.message }); }
@@ -180,8 +187,8 @@ app.post('/api/connect-cms', async (req, res) => {
 app.get('/api/dashboard/:email', async (req, res) => {
   try {
     const { supabase } = require('./supabase');
-    const email = decodeURIComponent(req.params.email);
-    const { data: client, error: clientErr } = await supabase.from('clients').select('*').eq('email', email).single();
+    const email = normalizeEmail(decodeURIComponent(req.params.email));
+    const { data: client, error: clientErr } = await supabase.from('clients').select('*').ilike('email', email).single();
     if (clientErr || !client) return res.status(404).json({ error: 'Client not found' });
     const { data: articles } = await supabase.from('articles').select('id, title, keyword, status, word_count, published_at, published_url, created_at').eq('client_id', client.id).order('created_at', { ascending: false }).limit(50);
     res.json({ client: { id: client.id, email: client.email, website_url: client.website_url, brand_name: client.brand_name, status: client.status, cms_type: client.cms_type || 'none', created_at: client.created_at }, articles: articles || [] });
@@ -191,9 +198,9 @@ app.get('/api/dashboard/:email', async (req, res) => {
 app.get('/api/dashboard/:email/articles/:articleId', async (req, res) => {
   try {
     const { supabase } = require('./supabase');
-    const email = decodeURIComponent(req.params.email);
+    const email = normalizeEmail(decodeURIComponent(req.params.email));
     const articleId = req.params.articleId;
-    const { data: client, error: clientErr } = await supabase.from('clients').select('id, email').eq('email', email).single();
+    const { data: client, error: clientErr } = await supabase.from('clients').select('id, email').ilike('email', email).single();
     if (clientErr || !client) return res.status(404).json({ error: 'Client not found' });
     const { data: article, error: articleErr } = await supabase.from('articles').select('*').eq('id', articleId).eq('client_id', client.id).single();
     if (articleErr || !article) return res.status(404).json({ error: 'Article not found' });
@@ -233,7 +240,8 @@ app.post('/api/admin/clients', async (req, res) => {
   if (!requireAdmin(req, res)) return;
   try {
     const { supabase } = require('./supabase');
-    const { email, website_url } = req.body;
+    const email = normalizeEmail(req.body.email);
+    const { website_url } = req.body;
     if (!email || !website_url) return res.status(400).json({ error: 'email and website_url required' });
     const { error } = await supabase.from('clients').insert({ email, website_url, status: 'active', cms_type: 'none' });
     if (error) throw error;
@@ -245,9 +253,9 @@ app.patch('/api/admin/clients/:email/status', async (req, res) => {
   if (!requireAdmin(req, res)) return;
   try {
     const { supabase } = require('./supabase');
-    const email = decodeURIComponent(req.params.email);
+    const email = normalizeEmail(decodeURIComponent(req.params.email));
     const status = req.body.status || 'active';
-    const { error } = await supabase.from('clients').update({ status }).eq('email', email);
+    const { error } = await supabase.from('clients').update({ status }).ilike('email', email);
     if (error) throw error;
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }

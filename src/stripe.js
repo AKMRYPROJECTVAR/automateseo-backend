@@ -10,8 +10,13 @@ function getStripe() {
   return stripe;
 }
 
+function normalizeEmail(email) {
+  return String(email || '').trim().toLowerCase();
+}
+
 async function createCheckoutSession(email, websiteUrl) {
   const stripe = getStripe();
+  email = normalizeEmail(email);
   const session = await stripe.checkout.sessions.create({
     customer_email: email,
     payment_method_types: ['card'],
@@ -40,7 +45,7 @@ async function handleStripeWebhook(req, res) {
 
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object;
-    const email = session.customer_details?.email || session.metadata?.email;
+    const email = normalizeEmail(session.customer_details?.email || session.metadata?.email);
     const websiteUrl = session.metadata?.website_url;
     const customerId = session.customer;
     const subscriptionId = session.subscription;
@@ -48,7 +53,7 @@ async function handleStripeWebhook(req, res) {
     console.log('Payment completed for:', email, 'website:', websiteUrl);
 
     if (email) {
-      const { data: existing } = await supabase.from('clients').select('id').eq('email', email).single();
+      const { data: existing } = await supabase.from('clients').select('id').ilike('email', email).single();
 
       if (existing) {
         // Update existing record - never touch CMS credentials
@@ -57,7 +62,7 @@ async function handleStripeWebhook(req, res) {
           stripe_customer_id: customerId,
           stripe_subscription_id: subscriptionId,
           trial_ends_at: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString()
-        }).eq('email', email);
+        }).ilike('email', email);
       } else {
         // Upsert: insert if no row exists, on conflict update stripe/status only - never CMS fields
         await supabase.from('clients').upsert({
