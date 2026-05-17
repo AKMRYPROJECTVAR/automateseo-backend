@@ -14,6 +14,16 @@ function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase();
 }
 
+function findClientByEmail(supabase, email, columns) {
+  return supabase
+    .from('clients')
+    .select(columns)
+    .ilike('email', email)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .single();
+}
+
 async function createCheckoutSession(email, websiteUrl) {
   const stripe = getStripe();
   email = normalizeEmail(email);
@@ -53,7 +63,7 @@ async function handleStripeWebhook(req, res) {
     console.log('Payment completed for:', email, 'website:', websiteUrl);
 
     if (email) {
-      const { data: existing } = await supabase.from('clients').select('id').ilike('email', email).single();
+      const { data: existing } = await findClientByEmail(supabase, email, 'id');
 
       if (existing) {
         // Update existing record - never touch CMS credentials

@@ -16,6 +16,16 @@ function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase();
 }
 
+function findClientByEmail(supabase, email, columns) {
+  return supabase
+    .from('clients')
+    .select(columns)
+    .ilike('email', email)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .single();
+}
+
 app.use('/webhook/stripe', express.raw({ type: 'application/json' }));
 app.use(express.json());
 app.use(cors({
@@ -188,7 +198,7 @@ app.get('/api/dashboard/:email', async (req, res) => {
   try {
     const { supabase } = require('./supabase');
     const email = normalizeEmail(decodeURIComponent(req.params.email));
-    const { data: client, error: clientErr } = await supabase.from('clients').select('*').ilike('email', email).single();
+    const { data: client, error: clientErr } = await findClientByEmail(supabase, email, '*');
     if (clientErr || !client) return res.status(404).json({ error: 'Client not found' });
     const { data: articles } = await supabase.from('articles').select('id, title, keyword, status, word_count, published_at, published_url, created_at').eq('client_id', client.id).order('created_at', { ascending: false }).limit(50);
     res.json({ client: { id: client.id, email: client.email, website_url: client.website_url, brand_name: client.brand_name, status: client.status, cms_type: client.cms_type || 'none', created_at: client.created_at }, articles: articles || [] });
@@ -200,7 +210,7 @@ app.get('/api/dashboard/:email/articles/:articleId', async (req, res) => {
     const { supabase } = require('./supabase');
     const email = normalizeEmail(decodeURIComponent(req.params.email));
     const articleId = req.params.articleId;
-    const { data: client, error: clientErr } = await supabase.from('clients').select('id, email').ilike('email', email).single();
+    const { data: client, error: clientErr } = await findClientByEmail(supabase, email, 'id, email');
     if (clientErr || !client) return res.status(404).json({ error: 'Client not found' });
     const { data: article, error: articleErr } = await supabase.from('articles').select('*').eq('id', articleId).eq('client_id', client.id).single();
     if (articleErr || !article) return res.status(404).json({ error: 'Article not found' });
